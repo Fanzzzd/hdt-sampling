@@ -29,10 +29,11 @@ You can install the package from PyPI:
 
 ```bash
 pip install hdt-sampling
-
+```
 
 Alternatively, if you have Rust and Maturin installed, you can build from source:
 
+```bash
 # Clone the repository
 git clone https://github.com/Fanzzzd/hdt_sampling.git
 cd hdt_sampling
@@ -44,13 +45,11 @@ cd hdt_sampling
 maturin develop --release
 # Or build a wheel for distribution
 # maturin build --release
-IGNORE_WHEN_COPYING_START
-content_copy
-download
-Use code with caution.
-Bash
-IGNORE_WHEN_COPYING_END
-Usage
+```
+
+## Usage
+
+```python
 import time
 import matplotlib.pyplot as plt
 from hdt_sampling import HDTSampler
@@ -90,14 +89,10 @@ if points:
     plt.show()
 else:
     print("No points were generated.")
-IGNORE_WHEN_COPYING_START
-content_copy
-download
-Use code with caution.
-Python
-IGNORE_WHEN_COPYING_END
+```
 
-See the example/ex1.py file for a more detailed example including Fourier analysis plots.
+See the `example/ex1.py` file for a more detailed example including Fourier analysis plots.
 
-License
-This project is licensed under the MIT License. See the LICENSE file for details (TODO: Add LICENSE file if desired).
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
