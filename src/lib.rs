@@ -1,7 +1,3 @@
-// important comments:
-// random_range is newer version of gen_range in rand = "0.9.1", gen_range is deprecated after 0.9.0. DONNOT USE gen_range use random_range instead
-// rng should be StdRng::from_os_rng(), DONNOT USE StdRng::from_entropy()
-
 use pyo3::prelude::*;
 use rand::prelude::*; 
 use rand::rngs::StdRng;
@@ -233,22 +229,20 @@ impl HDTSampler {
 }
 
 #[pymethods]
-impl HDTSampler { // Renamed impl block
+impl HDTSampler { 
     #[new]
     fn new(width: f64, height: f64, r: f64) -> PyResult<Self> {
         if r <= 0.0 {
-             // Use PyErr for Python-level errors
              return Err(pyo3::exceptions::PyValueError::new_err("r must be positive"));
         }
         let r_squared = r * r;
         let cell_size = r / std::f64::consts::SQRT_2;
-        // Ensure grid dimensions are at least 1
         let grid_cols = ((width / cell_size).ceil() as usize).max(1);
         let grid_rows = ((height / cell_size).ceil() as usize).max(1);
         let grid = vec![GridCell { indices: Vec::new() }; grid_cols * grid_rows];
 
         let points = Vec::new();
-        let mut active_lists: Vec<Vec<Square>> = vec![Vec::new()]; // Start with level 0
+        let mut active_lists: Vec<Vec<Square>> = vec![Vec::new()]; 
         let b0 = cell_size;
         let mut total_active_area = 0.0;
 
@@ -268,11 +262,11 @@ impl HDTSampler { // Renamed impl block
                      }
                  }
              }
-             level0_list.shrink_to_fit(); // Adjust capacity if needed
+             level0_list.shrink_to_fit(); 
         }
 
 
-        Ok(HDTSampler { // Use renamed struct name
+        Ok(HDTSampler { 
             width,
             height,
             r_squared,
@@ -301,7 +295,7 @@ impl HDTSampler { // Renamed impl block
 
                  // Ensure min is not greater than max (can happen for squares partially outside)
                  if px_min >= px_max || py_min >= py_max {
-                      continue; // Skip this square if its valid area is zero or negative
+                      continue; 
                  }
 
                  // Use random_range instead of gen_range(deprecated)
@@ -323,7 +317,7 @@ impl HDTSampler { // Renamed impl block
                  }
 
              } else {
-                 break; // No more active squares
+                 break; 
              }
          }
 
@@ -335,8 +329,8 @@ impl HDTSampler { // Renamed impl block
 
 /// A Python module implemented in Rust.
 #[pymodule]
-#[pyo3(name = "hdt_sampling")] // Renamed Python module
-fn hdt_sampling_module(m: &Bound<'_, PyModule>) -> PyResult<()> { // Function name can be updated for consistency
-    m.add_class::<HDTSampler>()?; // Add the renamed class
+#[pyo3(name = "hdt_sampling")] 
+fn hdt_sampling_module(m: &Bound<'_, PyModule>) -> PyResult<()> { 
+    m.add_class::<HDTSampler>()?; 
     Ok(())
 }

@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "hdt_sampling"
+description = "Fast Hierarchical Dart Throwing sampling implemented in Rust for Python."
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
