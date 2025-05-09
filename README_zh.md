@@ -1,7 +1,7 @@
 # HDT Sampling (分层飞镖投掷)
 
 [![CI](https://github.com/Fanzzzd/hdt_sampling/actions/workflows/CI.yml/badge.svg)](https://github.com/Fanzzzd/hdt_sampling/actions/workflows/CI.yml)
-[![PyPI version](https://badge.fury.io/py/hdt-sampling.svg)](https://badge.fury.io/py/hdt-sampling)
+[![PyPI](https://img.shields.io/pypi/v/hdt-sampling?logo=pypi)](https://pypi.org/project/hdt-sampling/)
 
 [English Readme (英文说明)](README.md)
 
