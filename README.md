@@ -91,7 +91,7 @@ else:
     print("No points were generated.")
 ```
 
-See the `example/ex1.py` file for a more detailed example including Fourier analysis plots.
+See the `example/example.ipynb` file for a more detailed example including Fourier analysis plots.
 
 ## License
 

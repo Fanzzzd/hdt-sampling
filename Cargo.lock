@@ -34,10 +34,11 @@ dependencies = [
 
 [[package]]
 name = "hdt_sampling"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "pyo3",
  "rand",
+ "rand_pcg",
 ]
 
 [[package]]
@@ -202,6 +203,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "rand_pcg"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b48ac3f7ffaab7fac4d2376632268aa5f89abdb55f7ebf8f4d11fffccb2320f7"
+dependencies = [
+ "rand_core",
 ]
 
 [[package]]

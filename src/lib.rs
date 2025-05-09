@@ -1,5 +1,5 @@
 use pyo3::prelude::*;
-use rand::prelude::*; 
+use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use std::cmp::{max, min};
 
@@ -18,129 +18,103 @@ struct Square {
 
 #[derive(Clone, Debug)]
 struct GridCell {
-    indices: Vec<usize>, 
+    indices: Vec<usize>,
 }
 
 #[pyclass(name = "HDTSampler")]
-struct HDTSampler { 
+pub struct HDTSampler {
     width: f64,
     height: f64,
-    r_squared: f64,
-    cell_size: f64,
+    r_sq: f64,
+    grid_cell_size: f64,
     grid_cols: usize,
     grid_rows: usize,
     grid: Vec<GridCell>,
-    points: Vec<Point>,
+    b0: f64,
     active_lists: Vec<Vec<Square>>,
     total_active_area: f64,
-    b0: f64, 
+    points: Vec<Point>,
     rng: StdRng,
 }
 
 impl HDTSampler {
-    fn get_grid_coords(&self, x: f64, y: f64) -> (usize, usize) {
-        let grid_x = (x / self.cell_size).floor() as usize;
-        let grid_y = (y / self.cell_size).floor() as usize;
-        // Clamp coordinates to be within grid bounds
+    #[inline]
+    fn grid_coords(&self, x: f64, y: f64) -> (usize, usize) {
+        let gx = (x / self.grid_cell_size).floor() as usize;
+        let gy = (y / self.grid_cell_size).floor() as usize;
         (
-            grid_x.min(self.grid_cols - 1),
-            grid_y.min(self.grid_rows - 1),
+            gx.min(self.grid_cols - 1),
+            gy.min(self.grid_rows - 1),
         )
     }
 
+    #[inline]
     fn get_square_size(&self, level: usize) -> f64 {
         self.b0 / 2.0f64.powi(level as i32)
     }
 
+    /// iterate over the 3×3 neighborhood of a cell
+    fn neighborhood_indices<'a>(
+        &'a self,
+        gx: usize,
+        gy: usize,
+    ) -> impl Iterator<Item = usize> + 'a {
+        let x0 = max(0, gx as i32 - 1) as usize;
+        let x1 = min(self.grid_cols - 1, gx + 1);
+        let y0 = max(0, gy as i32 - 1) as usize;
+        let y1 = min(self.grid_rows - 1, gy + 1);
+        (x0..=x1).flat_map(move |i| (y0..=y1).map(move |j| i + j * self.grid_cols))
+    }
+
     fn is_dart_valid(&self, x: f64, y: f64) -> bool {
-        let (grid_x, grid_y) = self.get_grid_coords(x, y);
-
-        let x_start = max(0, grid_x as i32 - 2) as usize;
-        let x_end = min(self.grid_cols - 1, grid_x + 2);
-        let y_start = max(0, grid_y as i32 - 2) as usize;
-        let y_end = min(self.grid_rows - 1, grid_y + 2);
-
-        for i in x_start..=x_end {
-            for j in y_start..=y_end {
-                let cell_idx = i + j * self.grid_cols;
-                // Use checked access to grid
-                if let Some(cell) = self.grid.get(cell_idx) {
-                    for &pt_idx in &cell.indices {
-                        // Use checked access to points
-                        if let Some(existing_point) = self.points.get(pt_idx) {
-                            let dx = x - existing_point.x;
-                            let dy = y - existing_point.y;
-                            let dist_sq = dx * dx + dy * dy;
-                            if dist_sq < self.r_squared {
-                                return false; // Too close
-                            }
-                        }
-                    }
+        let (gx, gy) = self.grid_coords(x, y);
+        for cell_idx in self.neighborhood_indices(gx, gy) {
+            for &pt_idx in &self.grid[cell_idx].indices {
+                let p = &self.points[pt_idx];
+                let dx = x - p.x;
+                let dy = y - p.y;
+                if dx * dx + dy * dy < self.r_sq {
+                    return false;
                 }
             }
         }
-        true 
+        true
     }
 
-    fn get_farthest_corner_dist_sq(&self, square: &Square, px: f64, py: f64) -> f64 {
-        let sq_size = self.get_square_size(square.level);
-        let center_x = square.x + sq_size / 2.0;
-        let center_y = square.y + sq_size / 2.0;
-
-        let dx = (center_x - px).abs() + sq_size / 2.0;
-        let dy = (center_y - py).abs() + sq_size / 2.0;
+    fn farthest_corner_dist_sq(&self, square: &Square, px: f64, py: f64) -> f64 {
+        let s = self.get_square_size(square.level);
+        let cx = square.x + s / 2.0;
+        let cy = square.y + s / 2.0;
+        let dx = (cx - px).abs() + s / 2.0;
+        let dy = (cy - py).abs() + s / 2.0;
         dx * dx + dy * dy
     }
 
     fn is_square_covered(&self, square: &Square) -> bool {
-        let sq_size = self.get_square_size(square.level);
-        let center_x = square.x + sq_size / 2.0;
-        let center_y = square.y + sq_size / 2.0;
-
-        let (center_grid_x, center_grid_y) = self.get_grid_coords(center_x, center_y);
-
-        let x_start = max(0, center_grid_x as i32 - 2) as usize;
-        let x_end = min(self.grid_cols - 1, center_grid_x + 2);
-        let y_start = max(0, center_grid_y as i32 - 2) as usize;
-        let y_end = min(self.grid_rows - 1, center_grid_y + 2);
-
-        for i in x_start..=x_end {
-            for j in y_start..=y_end {
-                let cell_idx = i + j * self.grid_cols;
-                 // Use checked access to grid
-                if let Some(cell) = self.grid.get(cell_idx) {
-                    for &pt_idx in &cell.indices {
-                        // Use checked access to points
-                        if let Some(existing_point) = self.points.get(pt_idx) {
-                           if self.get_farthest_corner_dist_sq(square, existing_point.x, existing_point.y) < self.r_squared {
-                                return true; // Covered
-                           }
-                        }
-                    }
+        let s = self.get_square_size(square.level);
+        let cx = square.x + s / 2.0;
+        let cy = square.y + s / 2.0;
+        let (gx, gy) = self.grid_coords(cx, cy);
+        for cell_idx in self.neighborhood_indices(gx, gy) {
+            for &pt_idx in &self.grid[cell_idx].indices {
+                let p = &self.points[pt_idx];
+                if self.farthest_corner_dist_sq(square, p.x, p.y) < self.r_sq {
+                    return true;
                 }
             }
         }
-        false // Not covered
+        false
     }
-
 
     fn add_point(&mut self, x: f64, y: f64) {
-        let pt_idx = self.points.len();
+        let idx = self.points.len();
         self.points.push(Point { x, y });
-
-        let (grid_x, grid_y) = self.get_grid_coords(x, y);
-        let cell_idx = grid_x + grid_y * self.grid_cols;
-        // Use checked access to grid
-        if let Some(cell) = self.grid.get_mut(cell_idx) {
-             cell.indices.push(pt_idx);
-        } else {
-            // This case should ideally not happen if grid is initialized correctly,
-            // but handle it defensively.
-            eprintln!("Warning: Attempted to access invalid grid cell index {}", cell_idx);
-        }
+        let (gx, gy) = self.grid_coords(x, y);
+        let cell_idx = gx + gy * self.grid_cols;
+        self.grid[cell_idx].indices.push(idx);
     }
 
-     fn ensure_active_list_level(&mut self, level: usize) {
+    fn ensure_level(&mut self, level: usize) {
         while self.active_lists.len() <= level {
             self.active_lists.push(Vec::new());
         }
@@ -150,187 +124,122 @@ impl HDTSampler {
         if x >= self.width || y >= self.height {
             return;
         }
-
-        let square = Square { level, x, y };
-
-        if self.is_square_covered(&square) {
+        let sq = Square { level, x, y };
+        if self.is_square_covered(&sq) {
             return;
         }
-
-        self.ensure_active_list_level(level);
-
-        // Use checked access to active_lists
-        if let Some(list) = self.active_lists.get_mut(level) {
-             list.push(square);
-             let sq_size = self.get_square_size(level);
-             self.total_active_area += sq_size * sq_size;
-        } else {
-             // Should not happen if ensure_active_list_level works correctly.
-            eprintln!("Warning: Failed to get mutable access to active list for level {}", level);
-        }
+        self.ensure_level(level);
+        self.active_lists[level].push(sq);
+        let s = self.get_square_size(level);
+        self.total_active_area += s * s;
     }
 
-
     fn choose_active_square(&mut self) -> Option<(Square, usize)> {
-        if self.total_active_area <= 1e-9 {
+        if self.total_active_area <= f64::EPSILON {
             return None;
         }
-
-        // Use random_range instead of the gen_range(deprecated)
-        let target_area = self.rng.random_range(0.0..self.total_active_area);
-        let mut current_area_sum = 0.0;
-
-        // Pre-calculate square sizes for each level to avoid immutable borrow later
-        let square_sizes: Vec<f64> = (0..self.active_lists.len())
-            .map(|level| self.get_square_size(level))
-            .collect();
-
-        for level_idx in 0..self.active_lists.len() {
-             // Use checked access and handle potential empty list
-             if let Some(squares_at_level) = self.active_lists.get_mut(level_idx) {
-                 if squares_at_level.is_empty() {
-                     continue;
-                 }
-
-                 let sq_size = square_sizes[level_idx];
-                 let area_per_square = sq_size * sq_size;
-                 let num_squares_at_level = squares_at_level.len();
-                 let level_total_area = num_squares_at_level as f64 * area_per_square;
-
-                 if current_area_sum + level_total_area > target_area {
-                     let remaining_area = target_area - current_area_sum;
-                     // Ensure division by non-zero area
-                     let target_idx_in_level_f = if area_per_square > 0.0 {
-                         remaining_area / area_per_square
-                     } else {
-                         0.0 // Avoid division by zero if area is somehow zero
-                     };
-
-                     let mut target_idx_in_level = target_idx_in_level_f.floor() as usize;
-
-                     // Ensure index is within bounds due to potential floating point inaccuracies
-                     target_idx_in_level = target_idx_in_level.min(num_squares_at_level - 1);
-
-
-                     // Efficiently remove: swap with the last element and pop
-                     let chosen_square = squares_at_level.swap_remove(target_idx_in_level);
-
-                     self.total_active_area -= area_per_square;
-                     return Some((chosen_square, level_idx));
-                 }
-                 current_area_sum += level_total_area;
-             }
+        let target = self.rng.random_range(0.0..self.total_active_area);
+        let mut acc = 0.0;
+        for level in 0..self.active_lists.len() {
+            let s = self.get_square_size(level);
+            let area = s * s;
+            let list = &mut self.active_lists[level];
+            if list.is_empty() {
+                continue;
+            }
+            let level_area = area * list.len() as f64;
+            if acc + level_area > target {
+                let idx_in_level = ((target - acc) / area).floor() as usize;
+                let chosen = list.swap_remove(idx_in_level);
+                self.total_active_area -= area;
+                return Some((chosen, level));
+            }
+            acc += level_area;
         }
-
-        // Should not happen if total_active_area > 0
-        eprintln!("Warning: Could not choose active square despite positive total area.");
         None
     }
 }
 
 #[pymethods]
-impl HDTSampler { 
+impl HDTSampler {
     #[new]
-    fn new(width: f64, height: f64, r: f64) -> PyResult<Self> {
+    pub fn new(width: f64, height: f64, r: f64, seed: Option<u64>) -> PyResult<Self> {
         if r <= 0.0 {
-             return Err(pyo3::exceptions::PyValueError::new_err("r must be positive"));
+            return Err(pyo3::exceptions::PyValueError::new_err("r must be positive"));
         }
-        let r_squared = r * r;
-        let cell_size = r / std::f64::consts::SQRT_2;
-        let grid_cols = ((width / cell_size).ceil() as usize).max(1);
-        let grid_rows = ((height / cell_size).ceil() as usize).max(1);
+        let r_sq = r * r;
+        let grid_cell_size = r;
+        let grid_cols = ((width / grid_cell_size).ceil() as usize).max(1);
+        let grid_rows = ((height / grid_cell_size).ceil() as usize).max(1);
         let grid = vec![GridCell { indices: Vec::new() }; grid_cols * grid_rows];
 
-        let points = Vec::new();
-        let mut active_lists: Vec<Vec<Square>> = vec![Vec::new()]; 
-        let b0 = cell_size;
+        let b0 = r / std::f64::consts::SQRT_2;
+
+        let mut active_lists: Vec<Vec<Square>> = vec![Vec::new()];
         let mut total_active_area = 0.0;
 
-        let rng = StdRng::from_os_rng();
-
-        // Initialize level 0 active squares
-        let initial_capacity = grid_cols * grid_rows;
-        if let Some(level0_list) = active_lists.get_mut(0) {
-             level0_list.reserve(initial_capacity);
-             for i in 0..grid_cols {
-                 for j in 0..grid_rows {
-                     let x = i as f64 * b0;
-                     let y = j as f64 * b0;
-                     if x < width && y < height {
-                         level0_list.push(Square { level: 0, x, y });
-                         total_active_area += b0 * b0;
-                     }
-                 }
-             }
-             level0_list.shrink_to_fit(); 
+        // initialize base‑level squares so they tile the domain
+        let cols_base = ((width / b0).ceil() as usize).max(1);
+        let rows_base = ((height / b0).ceil() as usize).max(1);
+        for i in 0..cols_base {
+            for j in 0..rows_base {
+                let x = i as f64 * b0;
+                let y = j as f64 * b0;
+                if x < width && y < height {
+                    active_lists[0].push(Square { level: 0, x, y });
+                    total_active_area += b0 * b0;
+                }
+            }
         }
 
+        let rng = match seed {
+            Some(s) => StdRng::seed_from_u64(s),
+            None => StdRng::from_os_rng(),
+        };
 
-        Ok(HDTSampler { 
+        Ok(Self {
             width,
             height,
-            r_squared,
-            cell_size,
+            r_sq,
+            grid_cell_size,
             grid_cols,
             grid_rows,
             grid,
-            points,
+            b0,
             active_lists,
             total_active_area,
-            b0,
+            points: Vec::new(),
             rng,
         })
     }
 
-    fn generate(&mut self) -> PyResult<Vec<(f64, f64)>> {
-         while self.total_active_area > 1e-9 {
-             if let Some((square, level_idx)) = self.choose_active_square() {
-                 let sq_size = self.get_square_size(level_idx);
-
-                 // Clamp random point generation within the domain boundary
-                 let px_max = (square.x + sq_size).min(self.width);
-                 let py_max = (square.y + sq_size).min(self.height);
-                 let px_min = square.x;
-                 let py_min = square.y;
-
-                 // Ensure min is not greater than max (can happen for squares partially outside)
-                 if px_min >= px_max || py_min >= py_max {
-                      continue; 
-                 }
-
-                 // Use random_range instead of gen_range(deprecated)
-                 let candidate_x = self.rng.random_range(px_min..px_max);
-                 let candidate_y = self.rng.random_range(py_min..py_max);
-
-
-                 if self.is_dart_valid(candidate_x, candidate_y) {
-                     self.add_point(candidate_x, candidate_y);
-                 } else {
-                     // Subdivide
-                     let child_level = level_idx + 1;
-                     let child_size = sq_size / 2.0;
-
-                     self.add_child_square(child_level, square.x, square.y);
-                     self.add_child_square(child_level, square.x + child_size, square.y);
-                     self.add_child_square(child_level, square.x, square.y + child_size);
-                     self.add_child_square(child_level, square.x + child_size, square.y + child_size);
-                 }
-
-             } else {
-                 break; 
-             }
-         }
-
-         // Convert points to Python-friendly format
-         let result = self.points.iter().map(|p| (p.x, p.y)).collect();
-         Ok(result)
-     }
+    pub fn generate(&mut self) -> PyResult<Vec<(f64, f64)>> {
+        while let Some((square, level)) = self.choose_active_square() {
+            if self.is_square_covered(&square) {
+                continue;
+            }
+            let s = self.get_square_size(level);
+            let px = self.rng.random_range(square.x..square.x + s);
+            let py = self.rng.random_range(square.y..square.y + s);
+            if self.is_dart_valid(px, py) {
+                self.add_point(px, py);
+            } else {
+                let child_level = level + 1;
+                let half = s / 2.0;
+                self.add_child_square(child_level, square.x, square.y);
+                self.add_child_square(child_level, square.x + half, square.y);
+                self.add_child_square(child_level, square.x, square.y + half);
+                self.add_child_square(child_level, square.x + half, square.y + half);
+            }
+        }
+        Ok(self.points.iter().map(|p| (p.x, p.y)).collect())
+    }
 }
 
-/// A Python module implemented in Rust.
+/// Python module wrapper
 #[pymodule]
-#[pyo3(name = "hdt_sampling")] 
-fn hdt_sampling_module(m: &Bound<'_, PyModule>) -> PyResult<()> { 
-    m.add_class::<HDTSampler>()?; 
+#[pyo3(name = "hdt_sampling")]
+fn hdt_sampling_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<HDTSampler>()?;
     Ok(())
 }

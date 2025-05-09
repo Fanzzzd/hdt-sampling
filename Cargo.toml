@@ -1,6 +1,6 @@
 [package]
 name = "hdt_sampling"
-version = "0.1.1"
+version = "0.1.3"
 edition = "2021"
 description = "Fast Hierarchical Dart Throwing sampling implementation"
 
@@ -12,3 +12,4 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = "0.24.0"
 rand = "0.9.1"
+rand_pcg = "0.9.0"
