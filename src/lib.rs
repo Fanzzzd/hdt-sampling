@@ -163,6 +163,7 @@ impl HDTSampler {
 #[pymethods]
 impl HDTSampler {
     #[new]
+    #[pyo3(signature = (width, height, r, seed=None))]
     pub fn new(width: f64, height: f64, r: f64, seed: Option<u64>) -> PyResult<Self> {
         if r <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err("r must be positive"));
